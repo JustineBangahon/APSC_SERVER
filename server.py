@@ -1,4 +1,4 @@
-# server.py (UPDATED FOR RENDER DEPLOYMENT)
+# server.py (MINIMAL VERSION FOR RENDER)
 from flask import Flask, request, jsonify
 import json
 import os
@@ -10,7 +10,6 @@ logging.basicConfig(level=logging.INFO)
 
 # Configuration
 # Set RASPBERRY_PI_ADDRESS in your Render environment variables
-# Example: http://your-raspberry-pi-ip:5001
 PI_ADDRESS = os.environ.get('RASPBERRY_PI_ADDRESS', None)
 
 @app.route('/')
