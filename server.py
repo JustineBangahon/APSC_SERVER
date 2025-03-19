@@ -1,13 +1,17 @@
+# server.py (UPDATED FOR RENDER DEPLOYMENT)
 from flask import Flask, request, jsonify
 import json
 import os
 import logging
+import requests
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# File-based communication with the Tkinter app
-COMMAND_FILE = "camera_commands.json"
+# Configuration
+# Set RASPBERRY_PI_ADDRESS in your Render environment variables
+# Example: http://your-raspberry-pi-ip:5001
+PI_ADDRESS = os.environ.get('RASPBERRY_PI_ADDRESS', None)
 
 @app.route('/')
 def home():
@@ -16,6 +20,18 @@ def home():
 @app.route('/api/status', methods=['GET'])
 def status():
     return jsonify({"status": "online"})
+
+@app.route('/api/test-pi-connection', methods=['GET'])
+def test_pi_connection():
+    """Test if we can reach the Raspberry Pi"""
+    if not PI_ADDRESS:
+        return jsonify({"error": "RASPBERRY_PI_ADDRESS not configured"}), 400
+    
+    try:
+        response = requests.get(f"{PI_ADDRESS}/status", timeout=5)
+        return jsonify({"status": "success", "pi_response": response.json()}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/alexa', methods=['POST'])
 def alexa_endpoint():
@@ -78,6 +94,19 @@ def alexa_endpoint():
         logging.error(f"Error processing request: {e}")
         return jsonify({"error": str(e)}), 500
 
+def send_command_to_pi(command_data):
+    """Send a command to the Raspberry Pi"""
+    if not PI_ADDRESS:
+        logging.error("RASPBERRY_PI_ADDRESS not configured")
+        return {"error": "RASPBERRY_PI_ADDRESS not configured"}
+    
+    try:
+        response = requests.post(f"{PI_ADDRESS}/command", json=command_data, timeout=5)
+        return response.json()
+    except Exception as e:
+        logging.error(f"Error sending command to Pi: {e}")
+        return {"error": f"Failed to send command to Raspberry Pi: {str(e)}"}
+
 def handle_open_camera(data):
     try:
         slots = data['request']['intent']['slots']
@@ -112,23 +141,26 @@ def handle_open_camera(data):
                 }
             })
         
-        # Write command to file for Tkinter app to read
-        with open(COMMAND_FILE, 'w') as f:
-            if open_all:
-                json.dump({
-                    "action": "open",
-                    "cameras": [1, 2, 3]  # All available cameras
-                }, f)
-                response_text = "Opening all cameras"
-            else:
-                json.dump({
-                    "action": "open",
-                    "cameras": cameras
-                }, f)
-                camera_list = " and ".join([str(cam) for cam in cameras])
-                response_text = f"Opening camera {camera_list}"
+        # Prepare command to send to Raspberry Pi
+        if open_all:
+            command_data = {
+                "action": "open",
+                "cameras": [1, 2, 3]  # All available cameras
+            }
+            response_text = "Opening all cameras"
+        else:
+            command_data = {
+                "action": "open",
+                "cameras": cameras
+            }
+            camera_list = " and ".join([str(cam) for cam in cameras])
+            response_text = f"Opening camera {camera_list}"
         
-        # Generate response
+        # Send command to Raspberry Pi
+        pi_response = send_command_to_pi(command_data)
+        logging.info(f"Pi response: {pi_response}")
+        
+        # Generate Alexa response
         return jsonify({
             "version": "1.0",
             "response": {
@@ -187,23 +219,26 @@ def handle_close_camera(data):
                 }
             })
         
-        # Write command to file for Tkinter app to read
-        with open(COMMAND_FILE, 'w') as f:
-            if close_all:
-                json.dump({
-                    "action": "close",
-                    "cameras": ["all"]
-                }, f)
-                response_text = "Closing all cameras"
-            else:
-                json.dump({
-                    "action": "close",
-                    "cameras": cameras
-                }, f)
-                camera_list = " and ".join([str(cam) for cam in cameras])
-                response_text = f"Closing camera {camera_list}"
+        # Prepare command to send to Raspberry Pi
+        if close_all:
+            command_data = {
+                "action": "close",
+                "cameras": ["all"]
+            }
+            response_text = "Closing all cameras"
+        else:
+            command_data = {
+                "action": "close",
+                "cameras": cameras
+            }
+            camera_list = " and ".join([str(cam) for cam in cameras])
+            response_text = f"Closing camera {camera_list}"
         
-        # Generate response
+        # Send command to Raspberry Pi
+        pi_response = send_command_to_pi(command_data)
+        logging.info(f"Pi response: {pi_response}")
+        
+        # Generate Alexa response
         return jsonify({
             "version": "1.0",
             "response": {
@@ -229,4 +264,5 @@ def handle_close_camera(data):
         })
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
