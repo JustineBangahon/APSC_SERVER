@@ -62,32 +62,61 @@ def alexa_endpoint():
         elif request_type == 'IntentRequest':
             intent_name = data['request']['intent']['name']
             
-            if intent_name == 'OpenCameraIntent':
+            # Handle Show All Cameras Intent
+            if intent_name == 'ShowAllCamerasIntent':
+                return handle_show_all_cameras()
+            
+            # Handle Open Camera Intent
+            elif intent_name == 'OpenCameraIntent':
                 return handle_open_camera(data)
+            
+            # Handle Close Camera Intent
             elif intent_name == 'CloseCameraIntent':
                 return handle_close_camera(data)
-            else:
-                return jsonify({
-                    "version": "1.0",
-                    "response": {
-                        "outputSpeech": {
-                            "type": "PlainText",
-                            "text": "I didn't understand that command. You can say open camera 1, or remove camera 2."
-                        },
-                        "shouldEndSession": False
-                    }
-                })
-        
-        # Handle SessionEndedRequest
-        elif request_type == 'SessionEndedRequest':
-            return jsonify({
-                "version": "1.0",
-                "response": {
-                    "shouldEndSession": True
-                }
-            })
         
         return jsonify({"error": "Unsupported request type"}), 400
+        
+    except Exception as e:
+        logging.error(f"Error processing request: {e}")
+        return jsonify({"error": str(e)}), 500
+
+def handle_show_all_cameras():
+    try:
+        # Prepare command to send to Raspberry Pi
+        command_data = {
+            "action": "open",
+            "cameras": [1, 2, 3]  # All available cameras
+        }
+        response_text = "Opening all cameras"
+        
+        # Send command to Raspberry Pi
+        pi_response = send_command_to_pi(command_data)
+        logging.info(f"Pi response: {pi_response}")
+        
+        # Generate Alexa response
+        return jsonify({
+            "version": "1.0",
+            "response": {
+                "outputSpeech": {
+                    "type": "PlainText",
+                    "text": response_text
+                },
+                "shouldEndSession": True
+            }
+        })
+        
+    except Exception as e:
+        logging.error(f"Error handling show all cameras: {e}")
+        return jsonify({
+            "version": "1.0",
+            "response": {
+                "outputSpeech": {
+                    "type": "PlainText",
+                    "text": "There was an error processing your request."
+                },
+                "shouldEndSession": True
+            }
+        })
         
     except Exception as e:
         logging.error(f"Error processing request: {e}")
